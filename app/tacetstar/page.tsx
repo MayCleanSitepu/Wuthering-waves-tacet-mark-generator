@@ -49,94 +49,103 @@ export default function TacetStarsPage() {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const { pathD, width, height, starMarkers } = useMemo(() => {
-    const paddingX = 50;
-    const paddingY = 40;
+  const paddingX = 50;
+  const paddingY = 40;
 
-    const width = lineLength + paddingX * 2;
-    const height = maxAmp * 2 + paddingY * 2;
-    const centerY = height / 2;
+  const width = lineLength + paddingX * 2;
+  const height = maxAmp * 2 + paddingY * 2;
+  const centerY = height / 2;
 
-    const pts: Point[] = [];
-    const stepX = lineLength / segments;
+  const pts: Point[] = [];
+  const stepX = lineLength / segments;
 
-    const numStars = 5;
+  const numStars = 5;
 
-    // posisi star di sepanjang 0..1 (bisa kamu tweak)
-    const starCenters = Array.from({ length: numStars }, (_, i) => {
-      // contoh: 1/6, 2/6, ... 5/6
-      return (i + 1) / (numStars + 1);
-    });
+  // 1) Tentukan index untuk 5 star → supaya spike bisa tepat di grid
+  const starIndices = Array.from({ length: numStars }, (_, i) =>
+    Math.round(((i + 1) * segments) / (numStars + 1)) // contoh: sekitar 1/6, 2/6, ... 5/6
+  );
 
-    const heightFactors = [0.2, 0.5, 1, 0.5, 0.2];
-    // tinggi masing-masing star (random tapi masih di-range maxAmp)
-    const starHeights = starCenters.map((_, i) => {
+  // 2) Tinggi masing-masing star: outer < inner < center
+  const heightFactors = [0.6, 0.8, 1, 0.8, 0.6]; // utk 5 star
+
+  const starHeights = starIndices.map((_, i) => {
     const factor = heightFactors[i] ?? 1;
-    // optional: kasih sedikit random biar ga kaku banget
-    const jitter = 0.9 + Math.random() * 0.2; // 0.9–1.1
-    return maxAmp * factor;
-    });
+    const jitter = 0.9 + Math.random() * 0.2; // biar ga kaku banget (0.9–1.1)
+    return maxAmp * factor * jitter;
+  });
 
-    // seberapa lebar pengaruh star (buntutnya)
-    const spread = 2.2; // makin besar makin lebar
+  // 3) Radius pengaruh tiap star dalam Satuan INDEX (bukan 0..1)
+  const baseRadius = segments / (numStars * 2); // kira-kira setengah jarak antar star
+  const radius = baseRadius * 1.2; // bisa kamu tweak kalau buntutnya mau lebih panjang/pendek
 
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments; // posisi 0..1 di sepanjang garis
-      const x = paddingX + i * stepX;
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments; // masih bisa dipakai kalau butuh
+    const x = paddingX + i * stepX;
 
-      let amp = 0;
+    let amp = 0;
 
-      // superposisi pengaruh dari 5 star
-      for (let s = 0; s < numStars; s++) {
-        const center = starCenters[s];
-        const peak = starHeights[s];
+    // superposisi tapi pakai MAX, bukan SUM → puncak pas di garis vertikal star
+    for (let s = 0; s < numStars; s++) {
+      const centerIndex = starIndices[s];
+      const peak = starHeights[s];
 
-        const dist = Math.abs(t - center); // 0 di axis star
-        const scaled = dist * numStars * spread;
+      const distIndex = Math.abs(i - centerIndex);
 
-        // 1 di center, 0 di luar radius
-        let influence = Math.max(0, 1 - scaled);
-        // tajemin / lembutin bentuk di sekitar star
-        influence = Math.pow(influence, sharpness);
+      // kalau di luar radius, star ini ga ngaruh
+      if (distIndex > radius) continue;
 
-        amp += peak * influence;
+      // 0 di center, 1 di tepi radius
+      const norm = distIndex / radius;
+      // 1 di center, 0 di tepi radius
+      let influence = 1 - norm;
+      influence = Math.pow(influence, sharpness);
+
+      const localAmp = peak * influence;
+
+      if (localAmp > amp) {
+        amp = localAmp;
       }
-
-      // tambahin noise biar organik
-      if (noiseAmount > 0) {
-        const noise = (Math.random() - 0.5) * 2 * noiseAmount;
-        amp += noise;
-      }
-
-      amp = Math.max(0, amp);
-
-      const topY = centerY - amp;
-      const bottomY = centerY + amp;
-
-      pts.push({ x, topY, bottomY });
     }
 
-    if (!pts.length) {
-      return { pathD: "", width, height, starMarkers: [] as StarMarker[] };
+    // 4) Tambah noise biar organik
+    if (noiseAmount > 0) {
+      const noise = (Math.random() - 0.5) * 2 * noiseAmount;
+      amp += noise;
     }
 
-    const topPoints = pts.map((p) => ({ x: p.x, y: p.topY }));
-    const bottomPoints = [...pts]
-      .reverse()
-      .map((p) => ({ x: p.x, y: p.bottomY }));
+    amp = Math.max(0, amp);
 
-    let d = "";
-    d += buildSmoothPath(topPoints, true);
-    d += buildSmoothPath(bottomPoints, false);
-    d += " Z";
+    const topY = centerY - amp;
+    const bottomY = centerY + amp;
 
-    const starMarkers: StarMarker[] = starCenters.map((c, i) => ({
-      x: paddingX + c * lineLength,
-      y: centerY,
-      h: starHeights[i],
-    }));
+    pts.push({ x, topY, bottomY });
+  }
 
-    return { pathD: d, width, height, starMarkers };
-  }, [lineLength, maxAmp, segments, sharpness, noiseAmount, seed]);
+  if (!pts.length) {
+    return { pathD: "", width, height, starMarkers: [] as StarMarker[] };
+  }
+
+  const topPoints = pts.map((p) => ({ x: p.x, y: p.topY }));
+  const bottomPoints = [...pts]
+    .reverse()
+    .map((p) => ({ x: p.x, y: p.bottomY }));
+
+  let d = "";
+  d += buildSmoothPath(topPoints, true);
+  d += buildSmoothPath(bottomPoints, false);
+  d += " Z";
+
+  // 5) Star marker buat garis vertikal & titik oranye
+  const starMarkers: StarMarker[] = starIndices.map((idx, i) => ({
+    x: paddingX + idx * stepX,
+    y: centerY,
+    h: starHeights[i],
+  }));
+
+  return { pathD: d, width, height, starMarkers };
+}, [lineLength, maxAmp, segments, sharpness, noiseAmount, seed]);
+
 
   const downloadSvg = () => {
     if (!svgRef.current) return;
