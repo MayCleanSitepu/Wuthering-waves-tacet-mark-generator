@@ -185,7 +185,7 @@ export default function TacetStarsPage() {
             </p>
 
             <a
-                href="https://github.com/USERNAME/REPO"
+                href="https://github.com/MayCleanSitepu/Wuthering-waves-tacet-mark-generator"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block"
