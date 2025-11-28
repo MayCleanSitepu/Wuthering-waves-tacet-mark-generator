@@ -177,12 +177,23 @@ export default function TacetStarsPage() {
       <div className="max-w-6xl mx-auto px-4 flex flex-col gap-8">
         {/* HEADER */}
         <header className="space-y-2 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-            Tacet Mark Generator
-          </h1>
-          <p className="text-sm md:text-base text-muted-foreground">
-            5-Star Tacet Mark 
-          </p>
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+                Tacet Mark Generator
+            </h1>
+            <p className="text-sm md:text-base text-red-500">
+                work in progress, thankyou for visits! 💖
+            </p>
+
+            <a
+                href="https://github.com/USERNAME/REPO"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block"
+            >
+                <Button variant="outline" size="sm" className="mt-2">
+                ⭐ View on GitHub
+                </Button>
+            </a>
         </header>
 
 
