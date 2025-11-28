@@ -1,11 +1,16 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 
 type Point = { x: number; topY: number; bottomY: number };
 type StarMarker = { x: number; y: number; h: number };
 
-// helper: bikin path melengkung (quadratic bezier) dari list titik
+
 function buildSmoothPath(
   points: { x: number; y: number }[],
   moveToStart: boolean
@@ -49,103 +54,108 @@ export default function TacetStarsPage() {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const { pathD, width, height, starMarkers } = useMemo(() => {
-  const paddingX = 50;
-  const paddingY = 40;
+    const paddingX = 50;
+    const paddingY = 40;
 
-  const width = lineLength + paddingX * 2;
-  const height = maxAmp * 2 + paddingY * 2;
-  const centerY = height / 2;
+    const width = lineLength + paddingX * 2;
+    const height = maxAmp * 2 + paddingY * 2;
+    const centerY = height / 2;
 
-  const pts: Point[] = [];
-  const stepX = lineLength / segments;
+    const pts: Point[] = [];
+    const stepX = lineLength / segments;
 
-  const numStars = 5;
 
-  // 1) Tentukan index untuk 5 star → supaya spike bisa tepat di grid
-  const starIndices = Array.from({ length: numStars }, (_, i) =>
-    Math.round(((i + 1) * segments) / (numStars + 1)) // contoh: sekitar 1/6, 2/6, ... 5/6
-  );
+    const seededRandom = (index: number): number => {
+      const combined = (seed * 73856093) ^ (index * 19349663);
+      const x = Math.sin(combined) * 10000;
+      return x - Math.floor(x);
+    };
 
-  // 2) Tinggi masing-masing star: outer < inner < center
-  const heightFactors = [0.6, 0.8, 1, 0.8, 0.6]; // utk 5 star
+    const numStars = 5;
 
-  const starHeights = starIndices.map((_, i) => {
-    const factor = heightFactors[i] ?? 1;
-    const jitter = 0.9 + Math.random() * 0.2; // biar ga kaku banget (0.9–1.1)
-    return maxAmp * factor * jitter;
-  });
+    // index 5 star 
+    const starIndices = Array.from({ length: numStars }, (_, i) =>
+      Math.round(((i + 1) * segments) / (numStars + 1)) 
+    );
 
-  // 3) Radius pengaruh tiap star dalam Satuan INDEX (bukan 0..1)
-  const baseRadius = segments / (numStars * 2); // kira-kira setengah jarak antar star
-  const radius = baseRadius * 1.2; // bisa kamu tweak kalau buntutnya mau lebih panjang/pendek
+    // Tinggi star: outer 
+    const heightFactors = [0.5, 0.7, 1.5, 0.7, 0.5]; 
 
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments; // masih bisa dipakai kalau butuh
-    const x = paddingX + i * stepX;
+    const starHeights = starIndices.map((_, i) => {
+      const factor = heightFactors[i] ?? 1;
+      const jitter = 0.9 + seededRandom(i * 1000) * 0.2; 
+      return maxAmp * factor * jitter;
+    });
 
-    let amp = 0;
+    // Radius pengaruh tiap star 
+    const baseRadius = segments / (numStars * 2); // setengah jarak antar star
+    const radius = baseRadius * 1.2; // tweak buntutnya panjang/pendek
 
-    // superposisi tapi pakai MAX, bukan SUM → puncak pas di garis vertikal star
-    for (let s = 0; s < numStars; s++) {
-      const centerIndex = starIndices[s];
-      const peak = starHeights[s];
+    for (let i = 0; i <= segments; i++) {
+      const x = paddingX + i * stepX;
 
-      const distIndex = Math.abs(i - centerIndex);
+      let amp = 0;
 
-      // kalau di luar radius, star ini ga ngaruh
-      if (distIndex > radius) continue;
+      
+      for (let s = 0; s < numStars; s++) {
+        const centerIndex = starIndices[s];
+        const peak = starHeights[s];
 
-      // 0 di center, 1 di tepi radius
-      const norm = distIndex / radius;
-      // 1 di center, 0 di tepi radius
-      let influence = 1 - norm;
-      influence = Math.pow(influence, sharpness);
+        const distIndex = Math.abs(i - centerIndex);
 
-      const localAmp = peak * influence;
+       
+        if (distIndex > radius) continue;
 
-      if (localAmp > amp) {
-        amp = localAmp;
+        
+        const norm = distIndex / radius;
+        
+        let influence = 1 - norm;
+        influence = Math.pow(influence, sharpness);
+
+        const localAmp = peak * influence;
+
+        if (localAmp > amp) {
+          amp = localAmp;
+        }
       }
+
+      
+      if (noiseAmount > 0) {
+        const noise = (seededRandom(i) - 0.5) * 2 * noiseAmount;
+        amp += noise;
+      }
+
+      amp = Math.max(0, amp);
+
+      const topY = centerY - amp;
+      const bottomY = centerY + amp;
+
+      pts.push({ x, topY, bottomY });
     }
 
-    // 4) Tambah noise biar organik
-    if (noiseAmount > 0) {
-      const noise = (Math.random() - 0.5) * 2 * noiseAmount;
-      amp += noise;
+    if (!pts.length) {
+      return { pathD: "", width, height, starMarkers: [] as StarMarker[] };
     }
 
-    amp = Math.max(0, amp);
+    const topPoints = pts.map((p) => ({ x: p.x, y: p.topY }));
+    const bottomPoints = [...pts]
+      .reverse()
+      .map((p) => ({ x: p.x, y: p.bottomY }));
 
-    const topY = centerY - amp;
-    const bottomY = centerY + amp;
+    let d = "";
+    d += buildSmoothPath(topPoints, true);
+    d += buildSmoothPath(bottomPoints, false);
+    d += " Z";
 
-    pts.push({ x, topY, bottomY });
-  }
+    
+    const starMarkers: StarMarker[] = starIndices.map((idx, i) => ({
+      x: paddingX + idx * stepX,
+      y: centerY,
+      h: starHeights[i],
+    }));
 
-  if (!pts.length) {
-    return { pathD: "", width, height, starMarkers: [] as StarMarker[] };
-  }
-
-  const topPoints = pts.map((p) => ({ x: p.x, y: p.topY }));
-  const bottomPoints = [...pts]
-    .reverse()
-    .map((p) => ({ x: p.x, y: p.bottomY }));
-
-  let d = "";
-  d += buildSmoothPath(topPoints, true);
-  d += buildSmoothPath(bottomPoints, false);
-  d += " Z";
-
-  // 5) Star marker buat garis vertikal & titik oranye
-  const starMarkers: StarMarker[] = starIndices.map((idx, i) => ({
-    x: paddingX + idx * stepX,
-    y: centerY,
-    h: starHeights[i],
-  }));
-
-  return { pathD: d, width, height, starMarkers };
-}, [lineLength, maxAmp, segments, sharpness, noiseAmount, seed]);
-
+    return { pathD: d, width, height, starMarkers };
+  }, [lineLength, maxAmp, segments, sharpness, noiseAmount, seed]);
 
   const downloadSvg = () => {
     if (!svgRef.current) return;
@@ -163,130 +173,181 @@ export default function TacetStarsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-white p-10 flex flex-col items-center gap-8">
-      <h1 className="text-3xl font-semibold text-center">
-        Tacet Mark Generator – 5 Star Structure
-      </h1>
+    <div className="min-h-screen bg-background text-foreground py-10">
+      <div className="max-w-6xl mx-auto px-4 flex flex-col gap-8">
+        {/* HEADER */}
+        <header className="space-y-2 text-center">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+            Tacet Mark Generator
+          </h1>
+          <p className="text-sm md:text-base text-muted-foreground">
+            5-Star Tacet Mark 
+          </p>
+        </header>
 
-      {/* CONTROLS */}
-      <div className="bg-neutral-800 p-6 rounded-xl flex flex-wrap gap-6 max-w-3xl w-full justify-center items-end">
-        <Control
-          label="Line Length"
-          min={300}
-          max={1200}
-          value={lineLength}
-          setValue={setLineLength}
-        />
-        <Control
-          label="Max Amplitude"
-          min={30}
-          max={140}
-          value={maxAmp}
-          setValue={setMaxAmp}
-        />
-        <Control
-          label="Segments"
-          min={30}
-          max={160}
-          value={segments}
-          setValue={setSegments}
-        />
-        <Control
-          label="Sharpness"
-          min={1}
-          max={5}
-          value={sharpness}
-          setValue={setSharpness}
-        />
-        <Control
-          label="Noise"
-          min={0}
-          max={40}
-          value={noiseAmount}
-          setValue={setNoiseAmount}
-        />
 
-        <div className="flex flex-col text-sm gap-1">
-          <span>Color</span>
-          <input
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className="h-8 w-14"
-          />
-        </div>
-
-        <label className="flex items-center gap-2 text-xs mt-2">
-          <input
-            type="checkbox"
-            checked={showGuides}
-            onChange={(e) => setShowGuides(e.target.checked)}
-          />
-          Show star guides
-        </label>
-
-        <button
-          onClick={() => setSeed((s) => s + 1)}
-          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-md text-xs"
-        >
-          Randomize
-        </button>
-      </div>
-
-      {/* PREVIEW */}
-      <div className="bg-white p-6 rounded-xl shadow-xl">
-        <svg
-          ref={svgRef}
-          width={width}
-          height={height}
-          viewBox={`0 0 ${width} ${height}`}
-        >
-          {/* garis tengah */}
-          <line
-            x1={0}
-            y1={height / 2}
-            x2={width}
-            y2={height / 2}
-            stroke={color}
-            strokeWidth={2}
-            opacity={0.2}
-          />
-
-          {/* waveform tacet */}
-          {pathD && (
-            <path
-              d={pathD}
-              fill={color}
-              stroke={color}
-              strokeWidth={1}
-            />
-          )}
-
-          {/* guides 5 star (axis vertikal + titik) */}
-          {showGuides &&
-            starMarkers.map((m, idx) => (
-              <g key={idx}>
-                <line
-                  x1={m.x}
-                  y1={m.y - m.h}
-                  x2={m.x}
-                  y2={m.y + m.h}
-                  stroke="#ff6b35"
-                  strokeWidth={1}
-                  opacity={0.6}
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)] items-start">
+          <Card className="border-border/60">
+            <CardContent className="p-6 md:p-8 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <Control
+                  label="Line Length"
+                  min={300}
+                  max={1200}
+                  value={lineLength}
+                  setValue={setLineLength}
+                  unit="px"
                 />
-                <circle cx={m.x} cy={m.y} r={3} fill="#ff6b35" />
-              </g>
-            ))}
-        </svg>
-      </div>
+                <Control
+                  label="Max Amplitude"
+                  min={30}
+                  max={140}
+                  value={maxAmp}
+                  setValue={setMaxAmp}
+                  unit="px"
+                />
+                <Control
+                  label="Segments"
+                  min={30}
+                  max={160}
+                  value={segments}
+                  setValue={setSegments}
+                />
+                <Control
+                  label="Sharpness"
+                  min={1}
+                  max={5}
+                  value={sharpness}
+                  setValue={setSharpness}
+                />
+                <Control
+                  label="Noise"
+                  min={0}
+                  max={40}
+                  value={noiseAmount}
+                  setValue={setNoiseAmount}
+                />
 
-      <button
-        onClick={downloadSvg}
-        className="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm"
-      >
-        Download SVG
-      </button>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label
+                      htmlFor="color-input"
+                      className="text-sm font-medium"
+                    >
+                      Color
+                    </Label>
+                    <span className="text-xs text-muted-foreground">
+                      {color.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-md border border-border shadow-inner">
+                      <div
+                        className="h-full w-full rounded-md"
+                        style={{ backgroundColor: color }}
+                      />
+                    </div>
+                    <input
+                      id="color-input"
+                      type="color"
+                      value={color}
+                      onChange={(e) => setColor(e.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-4 items-center justify-between pt-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show-guides"
+                    checked={showGuides}
+                    onCheckedChange={(checked) =>
+                      setShowGuides(checked as boolean)
+                    }
+                  />
+                  <Label
+                    htmlFor="show-guides"
+                    className="text-sm font-medium cursor-pointer"
+                  >
+                    Show star guides
+                  </Label>
+                </div>
+
+
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => setSeed((s) => s + 1)}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Randomize
+                  </Button>
+                  <Button onClick={downloadSvg} size="sm">
+                    Download SVG
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+
+          <Card className="bg-card border-border/60 shadow-lg">
+            <CardContent className="p-4 md:p-6">
+              <div className="w-full overflow-x-auto">
+                <div className="min-w-full flex justify-center">
+                  <svg
+                    ref={svgRef}
+                    width={width}
+                    height={height}
+                    viewBox={`0 0 ${width} ${height}`}
+                    className="rounded-lg"
+                  >
+
+                    <line
+                      x1={0}
+                      y1={height / 2}
+                      x2={width}
+                      y2={height / 2}
+                      stroke={color}
+                      strokeWidth={2}
+                      opacity={0.2}
+                    />
+
+
+                    {pathD && (
+                      <path
+                        d={pathD}
+                        fill={color}
+                        stroke={color}
+                        strokeWidth={1}
+                      />
+                    )}
+
+
+                    {showGuides &&
+                      starMarkers.map((m, idx) => (
+                        <g key={idx}>
+                          <line
+                            x1={m.x}
+                            y1={m.y - m.h}
+                            x2={m.x}
+                            y2={m.y + m.h}
+                            stroke="#ff6b35"
+                            strokeWidth={1}
+                            opacity={0.6}
+                          />
+                          <circle cx={m.x} cy={m.y} r={3} fill="#ff6b35" />
+                        </g>
+                      ))}
+                  </svg>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
@@ -297,20 +358,32 @@ type ControlProps = {
   min: number;
   max: number;
   setValue: (v: number) => void;
+  unit?: string;
 };
 
-function Control({ label, value, min, max, setValue }: ControlProps) {
+function Control({ label, value, min, max, setValue, unit }: ControlProps) {
+  const id = `${label.replace(/\s+/g, "-").toLowerCase()}-slider`;
+
   return (
-    <div className="flex flex-col text-sm gap-1 w-44">
-      <span>{label}</span>
-      <input
-        type="range"
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <Label htmlFor={id} className="text-sm font-medium">
+          {label}
+        </Label>
+        <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+          {value}
+          {unit ? ` ${unit}` : ""}
+        </span>
+      </div>
+      <Slider
+        id={id}
         min={min}
         max={max}
-        value={value}
-        onChange={(e) => setValue(Number(e.target.value))}
+        step={1}
+        value={[value]}
+        onValueChange={([v]) => setValue(v)}
+        className="mt-1"
       />
-      <span className="text-neutral-300">{value}</span>
     </div>
   );
 }
