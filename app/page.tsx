@@ -10,7 +10,6 @@ import { Label } from "@/components/ui/label";
 type Point = { x: number; topY: number; bottomY: number };
 type StarMarker = { x: number; y: number; h: number };
 
-
 function buildSmoothPath(
   points: { x: number; y: number }[],
   moveToStart: boolean
@@ -31,7 +30,6 @@ function buildSmoothPath(
     const mx = (p0.x + p1.x) / 2;
     const my = (p0.y + p1.y) / 2;
 
-    // p0 = control point, midpoint = end point
     d += ` Q ${p0.x} ${p0.y} ${mx} ${my}`;
   }
 
@@ -45,12 +43,12 @@ export default function TacetStarsPage() {
   const [lineLength, setLineLength] = useState(600);
   const [maxAmp, setMaxAmp] = useState(70);
   const [segments, setSegments] = useState(80);
-  const [sharpness, setSharpness] = useState(2); // bentuk “buntut” sekitar star
+  const [sharpness, setSharpness] = useState(2);
   const [noiseAmount, setNoiseAmount] = useState(8);
   const [color, setColor] = useState("#333333");
   const [showGuides, setShowGuides] = useState(true);
+  const [seed, setSeed] = useState(0);
 
-  const [seed, setSeed] = useState(0); // buat reroll random
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const { pathD, width, height, starMarkers } = useMemo(() => {
@@ -64,7 +62,6 @@ export default function TacetStarsPage() {
     const pts: Point[] = [];
     const stepX = lineLength / segments;
 
-
     const seededRandom = (index: number): number => {
       const combined = (seed * 73856093) ^ (index * 19349663);
       const x = Math.sin(combined) * 10000;
@@ -73,53 +70,42 @@ export default function TacetStarsPage() {
 
     const numStars = 5;
 
-    // index 5 star 
     const starIndices = Array.from({ length: numStars }, (_, i) =>
-      Math.round(((i + 1) * segments) / (numStars + 1)) 
+      Math.round(((i + 1) * segments) / (numStars + 1))
     );
 
-    // Tinggi star: outer 
-    const heightFactors = [0.5, 0.7, 1.5, 0.7, 0.5]; 
+    const heightFactors = [0.5, 0.7, 1.5, 0.7, 0.5];
 
     const starHeights = starIndices.map((_, i) => {
       const factor = heightFactors[i] ?? 1;
-      const jitter = 0.9 + seededRandom(i * 1000) * 0.2; 
+      const jitter = 0.9 + seededRandom(i * 1000) * 0.2;
       return maxAmp * factor * jitter;
     });
 
-    // Radius pengaruh tiap star 
-    const baseRadius = segments / (numStars * 2); // setengah jarak antar star
-    const radius = baseRadius * 1.2; // tweak buntutnya panjang/pendek
+    const baseRadius = segments / (numStars * 2);
+    const radius = baseRadius * 1.2;
 
     for (let i = 0; i <= segments; i++) {
       const x = paddingX + i * stepX;
-
       let amp = 0;
 
-      
       for (let s = 0; s < numStars; s++) {
         const centerIndex = starIndices[s];
         const peak = starHeights[s];
 
         const distIndex = Math.abs(i - centerIndex);
-
-       
         if (distIndex > radius) continue;
 
-        
         const norm = distIndex / radius;
-        
         let influence = 1 - norm;
         influence = Math.pow(influence, sharpness);
 
         const localAmp = peak * influence;
-
         if (localAmp > amp) {
           amp = localAmp;
         }
       }
 
-      
       if (noiseAmount > 0) {
         const noise = (seededRandom(i) - 0.5) * 2 * noiseAmount;
         amp += noise;
@@ -147,7 +133,6 @@ export default function TacetStarsPage() {
     d += buildSmoothPath(bottomPoints, false);
     d += " Z";
 
-    
     const starMarkers: StarMarker[] = starIndices.map((idx, i) => ({
       x: paddingX + idx * stepX,
       y: centerY,
@@ -173,34 +158,37 @@ export default function TacetStarsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground py-10">
-      <div className="max-w-6xl mx-auto px-4 flex flex-col gap-8">
+    <div className="min-h-screen bg-background text-foreground py-8 md:py-10">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col gap-8">
         {/* HEADER */}
-        <header className="space-y-2 text-center">
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-                Tacet Mark Generator
-            </h1>
-            <p className="text-sm md:text-base text-red-500">
-                work in progress, thankyou for visits! 💖
-            </p>
+        <header className="space-y-3 text-center">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
+            Tacet Mark Generator
+          </h1>
+          <p className="text-xs sm:text-sm md:text-base text-red-500">
+            work in progress, thankyou for visits! 💖
+          </p>
 
+          <div className="flex justify-center">
             <a
-                href="https://github.com/MayCleanSitepu/Wuthering-waves-tacet-mark-generator"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block"
+              href="https://github.com/MayCleanSitepu/Wuthering-waves-tacet-mark-generator"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block"
             >
-                <Button variant="outline" size="sm" className="mt-2">
+              <Button variant="outline" size="sm" className="mt-1 sm:mt-2">
                 ⭐ View on GitHub
-                </Button>
+              </Button>
             </a>
+          </div>
         </header>
 
-
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)] items-start">
+        {/* MAIN LAYOUT */}
+        <div className="grid gap-6 md:gap-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)] items-start">
+          {/* CONTROLS */}
           <Card className="border-border/60">
-            <CardContent className="p-6 md:p-8 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <CardContent className="p-4 sm:p-6 md:p-8 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 <Control
                   label="Line Length"
                   min={300}
@@ -239,6 +227,7 @@ export default function TacetStarsPage() {
                   setValue={setNoiseAmount}
                 />
 
+                {/* COLOR PICKER */}
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between gap-2">
                     <Label
@@ -269,7 +258,8 @@ export default function TacetStarsPage() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-4 items-center justify-between pt-2">
+              {/* ACTIONS */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-2">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="show-guides"
@@ -286,8 +276,7 @@ export default function TacetStarsPage() {
                   </Label>
                 </div>
 
-
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-2 sm:gap-3 sm:justify-end">
                   <Button
                     onClick={() => setSeed((s) => s + 1)}
                     variant="outline"
@@ -303,9 +292,9 @@ export default function TacetStarsPage() {
             </CardContent>
           </Card>
 
-
+          {/* PREVIEW */}
           <Card className="bg-card border-border/60 shadow-lg">
-            <CardContent className="p-4 md:p-6">
+            <CardContent className="p-3 sm:p-4 md:p-6">
               <div className="w-full overflow-x-auto">
                 <div className="min-w-full flex justify-center">
                   <svg
@@ -313,9 +302,10 @@ export default function TacetStarsPage() {
                     width={width}
                     height={height}
                     viewBox={`0 0 ${width} ${height}`}
-                    className="rounded-lg"
+                    className="w-full h-auto max-w-full rounded-lg"
+                    preserveAspectRatio="xMidYMid meet"
                   >
-
+                    {/* baseline */}
                     <line
                       x1={0}
                       y1={height / 2}
@@ -326,7 +316,7 @@ export default function TacetStarsPage() {
                       opacity={0.2}
                     />
 
-
+                    {/* main shape */}
                     {pathD && (
                       <path
                         d={pathD}
@@ -336,7 +326,7 @@ export default function TacetStarsPage() {
                       />
                     )}
 
-
+                    {/* guides */}
                     {showGuides &&
                       starMarkers.map((m, idx) => (
                         <g key={idx}>
