@@ -1,16 +1,54 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { Slider } from "@/components/ui/slider"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Card, CardContent } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+
+type Point = { x: number; topY: number; bottomY: number };
+
+// helper: bikin path dengan kurva quadratic (Q) yang halus
+function buildSmoothPath(
+  points: { x: number; y: number }[],
+  moveToStart: boolean
+): string {
+  if (points.length < 2) return "";
+
+  let d = "";
+
+  if (moveToStart) {
+    d += `M ${points[0].x} ${points[0].y}`;
+  } else {
+    d += `L ${points[0].x} ${points[0].y}`;
+  }
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i];
+    const p1 = points[i + 1];
+    const mx = (p0.x + p1.x) / 2;
+    const my = (p0.y + p1.y) / 2;
+
+    // p0 = control point, midpoint = end point
+    d += ` Q ${p0.x} ${p0.y} ${mx} ${my}`;
+  }
+
+  const last = points[points.length - 1];
+  d += ` L ${last.x} ${last.y}`;
+
+  return d;
+}
 
 export default function TacetWavePage() {
   const [lineLength, setLineLength] = useState(600);
-  const [maxAmp, setMaxAmp] = useState(60); // tinggi maksimum wave
-  const [segments, setSegments] = useState(60); // jumlah titik horizontal
-  const [sharpness, setSharpness] = useState(2); // makin besar makin runcing di tengah
-  const [noiseAmount, setNoiseAmount] = useState(10); // random amplitude
-  const [color, setColor] = useState("#000000");
+  const [maxAmp, setMaxAmp] = useState(60);
+  const [segments, setSegments] = useState(40);
+  const [sharpness, setSharpness] = useState(2);
+  const [noiseAmount, setNoiseAmount] = useState(10);
+  const [color, setColor] = useState("#333333");
+  const [seed, setSeed] = useState(0);
 
-  const [seed, setSeed] = useState(0); // buat re-roll pattern
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const { pathD, width, height } = useMemo(() => {
@@ -21,35 +59,21 @@ export default function TacetWavePage() {
     const height = maxAmp * 2 + paddingY * 2;
     const centerY = height / 2;
 
-    const pts: { x: number; topY: number; bottomY: number }[] = [];
-
+    const pts: Point[] = [];
     const stepX = lineLength / segments;
-
-    // Seeded random number generator for deterministic noise
-    const seededRandom = (index: number): number => {
-      const combined = seed * 73856093 ^ index * 19349663;
-      const x = Math.sin(combined) * 10000;
-      return x - Math.floor(x);
-    };
 
     for (let i = 0; i <= segments; i++) {
       const x = paddingX + i * stepX;
-
-      // 0..1 posisi relatif terhadap panjang
       const t = i / segments;
 
-      // envelope simetris: 1 di tengah, 0 di pinggir
-      const centerFactor = 1 - Math.abs(t - 0.5) / 0.5; // 0 di edge, 1 di center
-      const shaped = Math.pow(centerFactor, sharpness); // kontrol tajem/lembut
+      const centerFactor = 1 - Math.abs(t - 0.5) / 0.5; // 0 di pinggir, 1 di tengah
+      const shaped = Math.pow(centerFactor, sharpness);
 
       let amp = shaped * maxAmp;
-
-      // noise per titik
       if (noiseAmount > 0) {
-        const noise = (seededRandom(i) - 0.5) * 2 * noiseAmount;
+        const noise = (Math.random() - 0.5) * 2 * noiseAmount;
         amp += noise;
       }
-
       amp = Math.max(0, amp);
 
       const topY = centerY - amp;
@@ -58,54 +82,45 @@ export default function TacetWavePage() {
       pts.push({ x, topY, bottomY });
     }
 
-    if (pts.length === 0) {
-      return { pathD: "", width, height };
-    }
+    if (!pts.length) return { pathD: "", width, height };
 
-    // Bangun path tertutup: center -> top wave -> bottom wave -> close
-    let d = `M ${pts[0].x} ${centerY}`;
-    // garis ke titik pertama di atas
-    d += ` L ${pts[0].x} ${pts[0].topY}`;
-    // jalur atas ke kanan
-    for (let i = 1; i < pts.length; i++) {
-      d += ` L ${pts[i].x} ${pts[i].topY}`;
-    }
-    // jalur bawah balik ke kiri
-    for (let i = pts.length - 1; i >= 0; i--) {
-      d += ` L ${pts[i].x} ${pts[i].bottomY}`;
-    }
+    // buat list titik atas & bawah
+    const topPoints = pts.map((p) => ({ x: p.x, y: p.topY }));
+    const bottomPoints = [...pts]
+      .reverse()
+      .map((p) => ({ x: p.x, y: p.bottomY }));
+
+    let d = "";
+
+    // kurva bagian atas
+    d += buildSmoothPath(topPoints, true);
+    // kurva bagian bawah (balik ke kiri)
+    d += buildSmoothPath(bottomPoints, false);
+
     d += " Z";
 
     return { pathD: d, width, height };
-    // seed ikut di dependency biar random berubah kalau seed berubah
   }, [lineLength, maxAmp, segments, sharpness, noiseAmount, seed]);
 
   const downloadSvg = () => {
     if (!svgRef.current) return;
-
     const serializer = new XMLSerializer();
     const source = serializer.serializeToString(svgRef.current);
-
-    const blob = new Blob([source], {
-      type: "image/svg+xml;charset=utf-8",
-    });
+    const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
     a.href = url;
     a.download = "tacet-wave.svg";
     a.click();
-
     URL.revokeObjectURL(url);
   };
 
   return (
     <div className="min-h-screen bg-neutral-900 text-white p-10 flex flex-col items-center gap-8">
       <h1 className="text-3xl font-semibold text-center">
-        Tacet Waveform Generator
+        Tacet Waveform Generator (Curved)
       </h1>
 
-      {/* CONTROLS */}
       <div className="bg-neutral-800 p-6 rounded-xl flex flex-wrap gap-6 max-w-3xl w-full justify-center items-end">
         <Control
           label="Line Length"
@@ -161,7 +176,6 @@ export default function TacetWavePage() {
         </button>
       </div>
 
-      {/* PREVIEW */}
       <div className="bg-white p-6 rounded-xl shadow-xl">
         <svg
           ref={svgRef}
@@ -169,7 +183,6 @@ export default function TacetWavePage() {
           height={height}
           viewBox={`0 0 ${width} ${height}`}
         >
-          {/* Garis tengah */}
           <line
             x1={0}
             y1={height / 2}
@@ -177,17 +190,10 @@ export default function TacetWavePage() {
             y2={height / 2}
             stroke={color}
             strokeWidth={2}
-            opacity={0.4}
+            opacity={0.25}
           />
-
-          {/* Waveform tacet */}
           {pathD && (
-            <path
-              d={pathD}
-              fill={color}
-              stroke={color}
-              strokeWidth={1}
-            />
+            <path d={pathD} fill={color} stroke={color} strokeWidth={1} />
           )}
         </svg>
       </div>
