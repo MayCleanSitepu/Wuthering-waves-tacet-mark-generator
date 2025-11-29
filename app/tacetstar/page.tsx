@@ -45,10 +45,11 @@ export default function TacetStarsPage() {
   const [lineLength, setLineLength] = useState(600);
   const [maxAmp, setMaxAmp] = useState(70);
   const [segments, setSegments] = useState(80);
-  const [sharpness, setSharpness] = useState(2); // bentuk “buntut” sekitar star
+  const [sharpness, setSharpness] = useState(2); // bentuk "buntut" sekitar star
   const [noiseAmount, setNoiseAmount] = useState(8);
   const [color, setColor] = useState("#333333");
   const [showGuides, setShowGuides] = useState(true);
+  const [numStars, setNumStars] = useState(5);
 
   const [seed, setSeed] = useState(0); // buat reroll random
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -71,15 +72,18 @@ export default function TacetStarsPage() {
       return x - Math.floor(x);
     };
 
-    const numStars = 5;
-
-    // index 5 star 
+    // index star positions
     const starIndices = Array.from({ length: numStars }, (_, i) =>
       Math.round(((i + 1) * segments) / (numStars + 1)) 
     );
 
-    // Tinggi star: outer 
-    const heightFactors = [0.5, 0.7, 1.5, 0.7, 0.5]; 
+    // Generate height factors dynamically based on number of stars
+    const heightFactors = Array.from({ length: numStars }, (_, i) => {
+      const middle = numStars / 2;
+      const distance = Math.abs(i - (middle - 0.5));
+      const maxDistance = middle;
+      return 0.5 + (1 - distance / maxDistance) * 1.0;
+    }); 
 
     const starHeights = starIndices.map((_, i) => {
       const factor = heightFactors[i] ?? 1;
@@ -155,7 +159,7 @@ export default function TacetStarsPage() {
     }));
 
     return { pathD: d, width, height, starMarkers };
-  }, [lineLength, maxAmp, segments, sharpness, noiseAmount, seed]);
+  }, [lineLength, maxAmp, segments, sharpness, noiseAmount, seed, numStars]);
 
   const downloadSvg = () => {
     if (!svgRef.current) return;
@@ -201,6 +205,13 @@ export default function TacetStarsPage() {
           <Card className="border-border/60">
             <CardContent className="p-6 md:p-8 space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <Control
+                  label="Number of Stars"
+                  min={3}
+                  max={9}
+                  value={numStars}
+                  setValue={setNumStars}
+                />
                 <Control
                   label="Line Length"
                   min={300}
